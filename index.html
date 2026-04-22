@@ -1,0 +1,291 @@
+// =====================================================
+// TexnoPlus Factory System (ASP.NET Core MVC)
+// =====================================================
+// .NET 7/8 compatible
+
+// =======================
+// 1. MODELS
+// =======================
+
+// Models/Product.cs
+using System.ComponentModel.DataAnnotations;
+
+namespace TexnoPlus.Models
+{
+    public class Product
+    {
+        public int Id { get; set; }
+
+        [Required]
+        public string Name { get; set; }
+
+        [Range(0, int.MaxValue)]
+        public int MonthlyProduction { get; set; }
+
+        [Range(0, int.MaxValue)]
+        public int Stock { get; set; }
+    }
+}
+
+// Models/Order.cs
+using System.ComponentModel.DataAnnotations;
+
+namespace TexnoPlus.Models
+{
+    public class Order
+    {
+        public int Id { get; set; }
+
+        [Required]
+        public int ProductId { get; set; }
+        public Product Product { get; set; }
+
+        [Range(1, 1000)]
+        public int Quantity { get; set; }
+
+        public DateTime OrderDate { get; set; } = DateTime.Now;
+
+        public DateTime DeliveryDate { get; set; }
+    }
+}
+
+// Models/Feedback.cs
+using System.ComponentModel.DataAnnotations;
+
+namespace TexnoPlus.Models
+{
+    public class Feedback
+    {
+        public int Id { get; set; }
+
+        [Required]
+        public string Comment { get; set; }
+
+        [Range(1,5)]
+        public int Rating { get; set; }
+
+        [Required]
+        public string Status { get; set; } // yoqdi / yoqmadi
+    }
+}
+
+// =======================
+// 2. DB CONTEXT
+// =======================
+
+// Data/AppDbContext.cs
+using Microsoft.EntityFrameworkCore;
+using TexnoPlus.Models;
+
+namespace TexnoPlus.Data
+{
+    public class AppDbContext : DbContext
+    {
+        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) {}
+
+        public DbSet<Product> Products { get; set; }
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Feedback> Feedbacks { get; set; }
+    }
+}
+
+// =======================
+// 3. CONTROLLERS
+// =======================
+
+// Controllers/HomeController.cs
+using Microsoft.AspNetCore.Mvc;
+using TexnoPlus.Data;
+using Microsoft.EntityFrameworkCore;
+
+namespace TexnoPlus.Controllers
+{
+    public class HomeController : Controller
+    {
+        private readonly AppDbContext _context;
+
+        public HomeController(AppDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<IActionResult> Index()
+        {
+            var products = await _context.Products.ToListAsync();
+            return View(products);
+        }
+    }
+}
+
+// Controllers/OrdersController.cs
+using Microsoft.AspNetCore.Mvc;
+using TexnoPlus.Data;
+using TexnoPlus.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace TexnoPlus.Controllers
+{
+    public class OrdersController : Controller
+    {
+        private readonly AppDbContext _context;
+
+        public OrdersController(AppDbContext context)
+        {
+            _context = context;
+        }
+
+        public IActionResult Create()
+        {
+            ViewBag.Products = _context.Products.ToList();
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Create(Order order)
+        {
+            if (!ModelState.IsValid)
+                return View(order);
+
+            order.DeliveryDate = DateTime.Now.AddDays(new Random().Next(2,6));
+
+            _context.Orders.Add(order);
+            await _context.SaveChangesAsync();
+
+            return RedirectToAction("Index", "Home");
+        }
+    }
+}
+
+// Controllers/FeedbackController.cs
+using Microsoft.AspNetCore.Mvc;
+using TexnoPlus.Data;
+using TexnoPlus.Models;
+
+namespace TexnoPlus.Controllers
+{
+    public class FeedbackController : Controller
+    {
+        private readonly AppDbContext _context;
+
+        public FeedbackController(AppDbContext context)
+        {
+            _context = context;
+        }
+
+        public IActionResult Index()
+        {
+            return View(_context.Feedbacks.ToList());
+        }
+
+        public IActionResult Create() => View();
+
+        [HttpPost]
+        public IActionResult Create(Feedback feedback)
+        {
+            if (!ModelState.IsValid)
+                return View(feedback);
+
+            _context.Feedbacks.Add(feedback);
+            _context.SaveChanges();
+
+            return RedirectToAction("Index");
+        }
+    }
+}
+
+// =======================
+// 4. VIEWS
+// =======================
+
+// Views/Home/Index.cshtml
+@model IEnumerable<TexnoPlus.Models.Product>
+<h2>Mahsulotlar</h2>
+<table class="table">
+<tr><th>Nomi</th><th>Ishlab chiqarish</th><th>Ombor</th></tr>
+@foreach(var p in Model){
+<tr>
+<td>@p.Name</td>
+<td>@p.MonthlyProduction</td>
+<td>@p.Stock</td>
+</tr>
+}
+</table>
+
+// Views/Orders/Create.cshtml
+@model TexnoPlus.Models.Order
+<form method="post">
+<select asp-for="ProductId" asp-items="new SelectList(ViewBag.Products, "Id", "Name")"></select>
+<input asp-for="Quantity" placeholder="Soni" />
+<button type="submit">Buyurtma berish</button>
+</form>
+
+// Views/Feedback/Create.cshtml
+@model TexnoPlus.Models.Feedback
+<form method="post">
+<input asp-for="Comment" placeholder="Izoh" />
+<input asp-for="Rating" type="number" min="1" max="5" />
+<select asp-for="Status">
+<option>yoqdi</option>
+<option>yoqmadi</option>
+</select>
+<button type="submit">Yuborish</button>
+</form>
+
+// =======================
+// 5. PROGRAM.CS
+// =======================
+
+using Microsoft.EntityFrameworkCore;
+using TexnoPlus.Data;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllersWithViews();
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+var app = builder.Build();
+
+app.UseStaticFiles();
+app.UseRouting();
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.Run();
+
+// =======================
+// 6. appsettings.json
+// =======================
+
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=TexnoPlusDb;Trusted_Connection=True;"
+  }
+}
+
+// =======================
+// 7. MIGRATION COMMANDS
+// =======================
+// Tools > NuGet Console:
+// Add-Migration InitialCreate
+// Update-Database
+
+// =======================
+// 8. RUN
+// =======================
+// 1. Visual Studio da project och
+// 2. Database update qil
+// 3. Run (F5)
+
+// Default mahsulotlarni qo'shish uchun:
+// DB ga 3ta product qo'shing:
+// Elektr choynak
+// Mikroto'lqinli pech
+// Ventilyator
+
+// =====================================================
+// END
+// =====================================================
